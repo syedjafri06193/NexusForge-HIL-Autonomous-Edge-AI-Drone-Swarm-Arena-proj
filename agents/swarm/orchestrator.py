@@ -276,7 +276,7 @@ class TacticalPlanner:
         enemies = [d for d in sim.drones.values() if d.team != self.team and d.is_alive]
         avg_health = sum(d.health for d in my_drones) / len(my_drones)
         my_score = sim.scores.get(self.team.name, 0)
-        enemy_scores = {t.name: v for t, v in sim.scores.items() if t != self.team} if hasattr(sim.scores, 'items') else {}
+        enemy_scores = {k: v for k, v in sim.scores.items() if k != self.team.name}
         losing = my_score < max(enemy_scores.values(), default=0)
 
         # Decision logic

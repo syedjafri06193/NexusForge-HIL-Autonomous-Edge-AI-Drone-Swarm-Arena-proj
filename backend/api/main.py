@@ -28,6 +28,8 @@ from simulation.engine.sim import (
 )
 from agents.swarm.orchestrator import SwarmOrchestrator, SwarmCommand, MissionType, Formation
 from firmware.protocols.hil_mqtt import HILManager, HILConfig
+from firmware.fault_injection.injector import FaultInjector, FaultScenarios, FaultEvent, FaultType
+from backend.telemetry.writer import TelemetryWriter
 from firmware.tinyml.inference import DroneInferencePool
 
 
@@ -51,6 +53,8 @@ class GameSession:
         self.inference_pool = DroneInferencePool()
         self.websockets: Set[WebSocket] = set()
         self._sim_task: Optional[asyncio.Task] = None
+        self.fault_injector = FaultInjector()
+        self.telemetry_writer = TelemetryWriter()
         self.created_at = time.time()
 
         # Register HIL nodes for all drones
@@ -58,6 +62,7 @@ class GameSession:
             self.hil.register_drone(drone_id)
 
     async def start(self):
+        await self.telemetry_writer.start()
         self.sim.running = True
         self._sim_task = asyncio.create_task(
             run_simulation_loop(self.sim, self._broadcast)
@@ -65,6 +70,7 @@ class GameSession:
 
     async def stop(self):
         self.sim.running = False
+        await self.telemetry_writer.stop()
         if self._sim_task:
             self._sim_task.cancel()
 
@@ -77,6 +83,12 @@ class GameSession:
 
         # Update HIL from sim
         self.hil.update_from_sim(state["drones"])
+
+        # Apply fault injections
+        self.fault_injector.apply_to_simulation(self.sim)
+
+        # Record telemetry
+        self.telemetry_writer.record_session_snapshot(self.session_id, state)
 
         # Run swarm AI
         self.orchestrator.update()
@@ -474,6 +486,97 @@ async def websocket_endpoint(websocket: WebSocket, sid: str):
     finally:
         s.websockets.discard(websocket)
 
+
+
+# ─── Fault injection ──────────────────────────────────────────────────────────
+
+class FaultRequest(BaseModel):
+    fault_type: str
+    drone_ids: Optional[List[str]] = None
+    severity: float = Field(0.5, ge=0.0, le=1.0)
+    duration_s: float = Field(10.0, ge=1.0, le=120.0)
+    description: str = ""
+
+class FaultScenarioRequest(BaseModel):
+    scenario: str   # network_degradation | battery_crisis | inference_failure | cascade | rogue_unit
+
+@app.post("/sessions/{sid}/faults")
+async def inject_fault(sid: str, req: FaultRequest):
+    s = _get_session(sid)
+    try:
+        fault_type = FaultType(req.fault_type)
+    except ValueError:
+        raise HTTPException(400, f"Unknown fault type: {req.fault_type}. "
+                            f"Valid types: {[f.value for f in FaultType]}")
+    target_ids = req.drone_ids or list(s.sim.drones.keys())
+    fault = FaultEvent(
+        fault_type=fault_type,
+        target_drone_ids=target_ids,
+        severity=req.severity,
+        duration_s=req.duration_s,
+        description=req.description or f"Manual {fault_type.value}",
+    )
+    s.fault_injector.inject(fault)
+    return {"injected": fault.to_dict()}
+
+@app.post("/sessions/{sid}/faults/scenario")
+async def inject_scenario(sid: str, req: FaultScenarioRequest):
+    s = _get_session(sid)
+    drone_ids = list(s.sim.drones.keys())
+    scenario_map = {
+        "network_degradation": FaultScenarios.network_degradation,
+        "battery_crisis":      FaultScenarios.battery_crisis,
+        "inference_failure":   FaultScenarios.inference_failure,
+        "cascade":             FaultScenarios.cascade_failure,
+        "rogue_unit":          FaultScenarios.rogue_unit,
+    }
+    fn = scenario_map.get(req.scenario)
+    if not fn:
+        raise HTTPException(400, f"Unknown scenario. Valid: {list(scenario_map.keys())}")
+    fn(s.fault_injector, drone_ids)
+    return {"scenario": req.scenario, "status": s.fault_injector.get_status()}
+
+@app.get("/sessions/{sid}/faults")
+async def get_faults(sid: str):
+    s = _get_session(sid)
+    return s.fault_injector.get_status()
+
+@app.delete("/sessions/{sid}/faults")
+async def clear_faults(sid: str):
+    s = _get_session(sid)
+    s.fault_injector.clear_all()
+    return {"cleared": True}
+
+@app.get("/faults/types")
+async def list_fault_types():
+    return {"types": [f.value for f in FaultType]}
+
+
+# ─── Advanced analytics ───────────────────────────────────────────────────────
+
+@app.get("/sessions/{sid}/analytics/timeseries/{drone_id}")
+async def drone_timeseries(sid: str, drone_id: str):
+    s = _get_session(sid)
+    data = await s.telemetry_writer.query_latency_timeseries(sid, drone_id)
+    return {"drone_id": drone_id, "timeseries": data}
+
+@app.get("/sessions/{sid}/analytics/power")
+async def power_profile(sid: str):
+    s = _get_session(sid)
+    data = await s.telemetry_writer.query_power_profile(sid)
+    return {"power_profile": data}
+
+@app.get("/sessions/{sid}/analytics/db")
+async def db_analytics(sid: str):
+    s = _get_session(sid)
+    data = await s.telemetry_writer.query_session_analytics(sid)
+    return data
+
+@app.get("/sessions/{sid}/analytics/cached")
+async def cached_snapshot(sid: str):
+    s = _get_session(sid)
+    data = await s.telemetry_writer.get_cached_snapshot(sid)
+    return {"cached": data}
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 

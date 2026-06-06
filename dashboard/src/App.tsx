@@ -2,6 +2,11 @@ import { useState } from 'react';
 import { useNexusStore } from './store/nexus';
 import { useSimWebSocket } from './hooks/useSimWebSocket';
 import { ArenaCanvas } from './components/ArenaCanvas';
+import { Arena3DView } from './components/three/Arena3D';
+import AnalyticsPage from './pages/AnalyticsPage';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 2000 } } });
 import {
   ScoreBoard, DroneInspector, KillFeed, CommandTerminal, HILPanel, LeaderboardPanel,
 } from './components/HUDPanels';
@@ -11,7 +16,7 @@ import { Zap, Play, Square, Pause, BarChart2, Layers, Activity, Settings } from 
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-export default function App() {
+function AppInner() {
   const store = useNexusStore();
   const { sessionId, connected, showBenchmark, setShowBenchmark } = store;
   useSimWebSocket(sessionId);
@@ -32,10 +37,15 @@ export default function App() {
 
         {/* Arena */}
         <div className="flex-1 min-w-0 relative">
-          <ArenaCanvas />
+          {store.viewMode === '3d' ? <Arena3DView /> : <ArenaCanvas />}
           {showBenchmark && (
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-10 overflow-auto">
               <BenchmarkPanel onClose={() => setShowBenchmark(false)} />
+            </div>
+          )}
+          {store.showAnalytics && (
+            <div className="absolute inset-0 bg-black/90 backdrop-blur-sm z-10 overflow-auto">
+              <AnalyticsPage onClose={() => store.setShowAnalytics(false)} />
             </div>
           )}
         </div>
@@ -83,6 +93,20 @@ function TopBar() {
 
       <div className="ml-auto flex items-center gap-1.5">
         <TopBtn icon={<Pause size={12} />} label="PAUSE" onClick={pauseSession} />
+        {/* 2D / 3D toggle */}
+        <div className="flex bg-white/5 rounded p-0.5">
+          {(['2d','3d'] as const).map(m => (
+            <button key={m} onClick={() => store.setViewMode(m)}
+              className={clsx('px-2 py-1 rounded text-xs font-mono transition-all',
+                store.viewMode === m ? 'bg-cyan-600/40 text-cyan-300' : 'text-gray-600 hover:text-gray-400')}>
+              {m.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        <TopBtn icon={<BarChart2 size={12} />} label="ANALYTICS"
+          onClick={() => store.setShowAnalytics(!store.showAnalytics)}
+          active={store.showAnalytics}
+        />
         <TopBtn icon={<BarChart2 size={12} />} label="BENCH"
           onClick={() => setShowBenchmark(!showBenchmark)}
           active={showBenchmark}
@@ -239,5 +263,13 @@ function LobbyScreen() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppInner />
+    </QueryClientProvider>
   );
 }

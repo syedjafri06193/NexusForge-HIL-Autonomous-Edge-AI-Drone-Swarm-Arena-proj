@@ -85,6 +85,7 @@ interface NexusStore {
   selectedDroneId: string | null;
   showTelemetry: boolean;
   showBenchmark: boolean;
+  showAnalytics: boolean;
   commandText: string;
   commandTeam: TeamName;
   paused: boolean;
@@ -100,6 +101,7 @@ interface NexusStore {
   setCommandTeam: (t: TeamName) => void;
   setShowTelemetry: (v: boolean) => void;
   setShowBenchmark: (v: boolean) => void;
+  setShowAnalytics: (v: boolean) => void;
   setViewMode: (v: '2d' | '3d') => void;
   sendCommand: (text: string) => void;
   disconnect: () => void;
@@ -123,6 +125,7 @@ export const useNexusStore = create<NexusStore>((set, get) => ({
   selectedDroneId: null,
   showTelemetry: false,
   showBenchmark: false,
+  showAnalytics: false,
   commandText: '',
   commandTeam: 'RED',
   paused: false,
@@ -150,6 +153,7 @@ export const useNexusStore = create<NexusStore>((set, get) => ({
   setCommandTeam: (t) => set({ commandTeam: t }),
   setShowTelemetry: (v) => set({ showTelemetry: v }),
   setShowBenchmark: (v) => set({ showBenchmark: v }),
+  setShowAnalytics: (v) => set({ showAnalytics: v }),
   setViewMode: (v) => set({ viewMode: v }),
 
   sendCommand: (text) => {
