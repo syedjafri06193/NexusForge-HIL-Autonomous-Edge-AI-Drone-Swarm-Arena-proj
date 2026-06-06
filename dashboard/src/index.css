@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg:        #060810;
+  --surface:   #0d1117;
+  --surface2:  #151b26;
+  --border:    rgba(0,210,255,0.15);
+  --accent:    #00d2ff;
+  --accent2:   #7c3aed;
+  --danger:    #ff4060;
+  --success:   #00ff9d;
+  --warning:   #ffb800;
+  --text:      #e0e8ff;
+  --muted:     #5a7090;
+  --font-mono: 'Share Tech Mono', monospace;
+  --font-ui:   'Exo 2', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--accent); opacity: 0.3; border-radius: 2px; }
+
+.hud-panel {
+  background: rgba(13,17,23,0.92);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  backdrop-filter: blur(12px);
+}
+
+.hud-panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.6;
+}
+
+.glow-text {
+  text-shadow: 0 0 8px currentColor;
+}
+
+.scanline {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,210,255,0.01) 2px,
+    rgba(0,210,255,0.01) 4px
+  );
+}
+
+.health-bar { transition: width 0.3s ease; }
+
+.team-red    { color: #ff4060; }
+.team-blue   { color: #4080ff; }
+.team-green  { color: #00ff9d; }
+.team-gold   { color: #ffb800; }
+
+.bg-team-red   { background: rgba(255,64,96,0.15); border-color: rgba(255,64,96,0.4); }
+.bg-team-blue  { background: rgba(64,128,255,0.15); border-color: rgba(64,128,255,0.4); }
+.bg-team-green { background: rgba(0,255,157,0.15); border-color: rgba(0,255,157,0.4); }
+.bg-team-gold  { background: rgba(255,184,0,0.15); border-color: rgba(255,184,0,0.4); }
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.pulse { animation: pulse-glow 1.5s ease-in-out infinite; }
+
+@keyframes slide-in {
+  from { transform: translateX(-20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.slide-in { animation: slide-in 0.2s ease-out forwards; }
