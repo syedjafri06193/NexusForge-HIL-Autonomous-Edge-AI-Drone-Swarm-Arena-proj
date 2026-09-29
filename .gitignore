@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 agents/models/*.npz
 agents/models/*.json
+.pytest_cache/
+node_modules/
+dist/
+.env
+.DS_Store

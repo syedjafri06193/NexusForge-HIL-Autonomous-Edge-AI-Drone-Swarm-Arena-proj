@@ -1,124 +1,150 @@
 # NexusForge
 ### HIL Autonomous Edge-AI Drone Swarm Arena
 
-> A real-time multi-agent combat simulator bridging **edge AI**, **distributed systems**, and **hardware-in-the-loop** from ESP32 firmware to orchestrated drone swarms.
+A real-time multi-agent combat simulator bridging **edge AI**, **distributed
+systems** and **hardware-in-the-loop** — from ESP32 firmware up to
+orchestrated drone swarms.
 
----
-
-## What It Is
-
-NexusForge is a persistent arena where **autonomous drones** compete, coordinate, and adapt in real time. Each drone runs lightweight **TinyML inference** on a simulated (or real) MCU, a **behavior tree AI** handles per-drone decisions, a **swarm orchestrator** manages team tactics, and an **NLP command interface** lets operators issue natural-language orders.
-
-**Core portfolio story:** bridging edge AI, distributed systems, and real-time simulation from embedded hardware all the way up to orchestrated swarms.
-
----
+Each drone runs simulated **TinyML inference** on an MCU profile, a
+**behavior tree** makes per-drone decisions, a **swarm orchestrator** handles
+team tactics, and a **natural-language command interface** lets operators
+issue orders like *"Red team, attack the center in wedge formation."*
 
 ## Architecture
 
 ```
-ESP32 / STM32                    Browser Dashboard
-  | MQTT 20Hz telemetry               |
-  v                                   | WebSocket 60 FPS
-Mosquitto ──────> FastAPI Backend ────+
-                      |               |
-                 Simulation Loop      NLP Command Input
-                 Python 60 FPS        |
-                 Behavior Trees   Swarm Orchestrator
-                 TinyML Simulator  Tactical Planner
-                      |            Formation Control
-                   Redis
-                   TimescaleDB
+ESP32 / STM32                    Browser dashboard (React, 2D canvas + 3D view)
+  │ MQTT 20 Hz telemetry               ▲
+  ▼                                    │ WebSocket 60 FPS
+Mosquitto ──────► FastAPI backend ─────┤
+                      │                │
+                 Simulation loop       NLP command input
+                 (Python, 60 FPS)      │
+                 Behavior trees    Swarm orchestrator
+                 TinyML simulator  Tactical planner · formations
+                 Fault injection   RL-trained policies
+                      │
+                 Redis · TimescaleDB
 ```
 
 | Layer | Technology |
-|-------|-----------|
-| Simulation | Python + NumPy (custom physics, 60 FPS, 128 agents) |
-| Per-drone AI | Behavior trees: Attack, Evade, Flock, Patrol, Capture |
-| Swarm AI | Formation control, tactical planner, NLP intent parser |
-| Edge AI | ONNX/TFLite inference sim (4/8/16/32-bit quantization) |
-| Firmware | C/C++ + FreeRTOS (ESP32, STM32, PlatformIO) |
+|---|---|
+| Simulation | Python + NumPy (custom 2D physics, 60 FPS, up to 128 agents) |
+| Per-drone AI | Behavior trees: attack, evade, flock, patrol, capture |
+| Swarm AI | Formation control, tactical planner, NLP intent parser, PPO-style RL self-play |
+| Edge AI | Inference simulator: 4/8/16/32-bit quantization across 5 MCU profiles |
+| Firmware | C++ / FreeRTOS on ESP32 (PlatformIO), simulated ESP32 fleet, fault injection |
 | Backend | FastAPI + WebSockets + Redis pub/sub |
-| Time-series | TimescaleDB + continuous aggregates |
-| Message bus | MQTT via Mosquitto |
-| Dashboard | React + Canvas 2D renderer + Recharts benchmark view |
-| Infra | Docker Compose, Kubernetes + HPA, Prometheus, Grafana |
+| Storage | TimescaleDB hypertables |
+| Message bus | MQTT (Mosquitto) |
+| Dashboard | React, Canvas 2D, three.js 3D view, Recharts analytics |
+| Infra | Docker Compose, Kubernetes + HPA |
 
----
+## Quick start
 
-## Quick Start
+**Headless, no services needed:**
 
 ```bash
-# Docker Compose (everything)
-docker compose up -d
-
-# Dashboard:  http://localhost:3000
-# API Docs:   http://localhost:8000/docs
-# MQTT:       localhost:1883
-
-# Local dev
 pip install -r backend/requirements.txt
+pytest                                                       # 111 tests
+python demos/run_demo.py --teams 4 --drones 16 --ticks 600 --faults
+```
+
+**Full stack with Docker Compose:**
+
+```bash
+docker compose up -d
+# Dashboard  http://localhost:3000
+# API docs   http://localhost:8000/docs
+# MQTT       localhost:1883
+```
+
+**Local dev:**
+
+```bash
 uvicorn backend.api.main:app --reload --port 8000
 cd dashboard && npm install && npm run dev
 ```
 
----
+Set `ANTHROPIC_API_KEY` to use Claude for richer command parsing; without it
+the NLP interface falls back to the built-in keyword parser.
 
-## Key Features
+## Repository layout
 
-### Simulation (`simulation/engine/sim.py`)
-- 128 drones at 60 FPS in Python asyncio
-- Full 2D physics: velocity, drag, collision detection, wall bounce
-- Weapons with projectile lead-targeting
-- Shield regen, battery drain model
+```
+.
+├── simulation/engine/     sim.py — physics, weapons, hazards, control points
+├── agents/
+│   ├── behaviors/         behavior tree nodes and drone profiles
+│   ├── swarm/             orchestrator: missions, formations, tactical planner
+│   ├── nlp/               natural-language command parser (Claude + keyword fallback)
+│   ├── rl/                self-play policy trainer
+│   └── models/            trained policies (generated, git-ignored)
+├── firmware/
+│   ├── esp32_sim/         real ESP32 firmware (C++, PlatformIO)
+│   ├── protocols/         simulated ESP32 fleet + HIL MQTT manager
+│   ├── tinyml/            edge inference latency / power / accuracy model
+│   └── fault_injection/   hardware and network fault scenarios
+├── backend/
+│   ├── api/               FastAPI app: sessions, commands, HIL inject, replay, analytics
+│   └── telemetry/         TimescaleDB writer + Redis cache
+├── dashboard/             React frontend
+├── demos/                 headless demo script
+├── infra/                 Dockerfiles, Mosquitto config, TimescaleDB init, k8s manifests
+├── tests/                 agents, firmware, simulation
+└── docker-compose.yml
+```
+
+## Features
+
+### Simulation — `simulation/engine/sim.py`
+- Up to 128 drones at 60 FPS in Python asyncio
+- 2D physics: velocity, drag, collisions, wall bounce
+- Weapons with projectile lead-targeting, shield regen, battery drain
 - Dynamic hazards: plasma storms, gravity wells, EMP pulses, shield disruptors
 - 5 capturable control points with per-team progress
 
-### Per-drone Behavior Tree AI (`agents/behaviors/behavior_tree.py`)
-- Composable BT nodes: Sequence, Selector, Inverter, AlwaysSuccess
+### Per-drone behavior trees — `agents/behaviors/behavior_tree.py`
+- Composable nodes: Sequence, Selector, Inverter, AlwaysSuccess
 - Conditions: HasEnemiesInSight, IsLowHealth, IsOutnumbered, WeaponReady
-- Actions: AttackNearestEnemy, Evade, Regroup, FlockWithAllies (Reynolds boids), Patrol, CaptureControlPoint, PinceMovement
-- Three profiles: aggressive, defensive, flanker
-- Quantization noise model: 4-bit drones occasionally make wrong decisions
+- Actions: attack, evade, regroup, flock (Reynolds boids), patrol, capture, pincer
+- Profiles: aggressive, defensive, flanker
+- Quantization noise: 4-bit drones occasionally make wrong decisions
 
-### Swarm Orchestrator (`agents/swarm/orchestrator.py`)
-- 10 mission types: Attack, Defend, Capture, Flank, Surround, Scatter, Regroup, Kamikaze...
-- 6 formation shapes: Wedge, Line, Circle, Diamond, Column, Spread
-- Hungarian-algorithm-style slot assignment (nearest drone to each formation slot)
-- NLP parser: keyword intent extraction, team/location/formation detection
-- Tactical planner: re-evaluates every 2 seconds, switches missions based on health/numbers/score
+### Swarm orchestrator — `agents/swarm/orchestrator.py`
+- 10 mission types (attack, defend, capture, flank, surround, scatter, regroup, kamikaze…)
+- 6 formations: wedge, line, circle, diamond, column, spread
+- Nearest-drone slot assignment for formations
+- Tactical planner re-evaluates every 2 s based on health, numbers and score
 
-### Edge AI Simulator (`firmware/tinyml/inference.py`)
-- 4 model specs: MobileNetV1, SqueezeNet-Lite, TinyLSTM, TinyTransformer
-- 5 MCU profiles: ESP32, ESP32-S3, STM32F4, STM32H7, RPi Zero 2
-- Realistic latency with jitter, cache misses, interrupt latency
-- Power model: active mW * latency_ms = energy in µJ
-- Accuracy degradation: 4-bit (-6%), 8-bit (-2%), 16-bit (-0.5%)
-- Built-in benchmark: p50/p95/p99 latency, budget_met%, model size
+### Reinforcement learning — `agents/rl/trainer.py`
+- CPU-only PPO-style self-play; trained policies plug back into the behavior tree as `rl_policy`
 
-### HIL / Firmware (`firmware/protocols/hil_mqtt.py`, `firmware/esp32_sim/main.cpp`)
-- SimulatedESP32: generates realistic telemetry with sensor noise, clock drift, RSSI variance
-- Packet loss model, latency jitter, battery voltage curve
-- HILManager: fleet health aggregation, telemetry log, command delivery tracking
-- Real ESP32 firmware (C++/PlatformIO): connects over WiFi+MQTT, FreeRTOS tasks, real inference stub
+### Edge AI simulator — `firmware/tinyml/inference.py`
+- Models: MobileNetV1, SqueezeNet-Lite, TinyLSTM, TinyTransformer
+- MCUs: ESP32, ESP32-S3, STM32F4, STM32H7, RPi Zero 2
+- Latency with jitter, cache misses and interrupt latency; energy = power × latency
+- Accuracy loss by quantization; p50/p95/p99 benchmark with budget-met %
 
-### Backend API (`backend/api/main.py`)
-- FastAPI with WebSocket broadcasting at 60 FPS
-- Session management: create/pause/delete
-- REST endpoints: spawn drones, issue commands, get telemetry, run benchmarks
-- HIL injection: `/hil/inject` merges real hardware data with simulation
-- Redis pub/sub for multi-server WebSocket fan-out
-- Replay system: records frames at 10 FPS, seekable
+### Hardware-in-the-loop — `firmware/`
+- Simulated ESP32s with sensor noise, clock drift, RSSI variance, packet loss, battery curve
+- HIL manager: fleet health, telemetry log, command delivery tracking
+- Real ESP32 firmware: Wi-Fi + MQTT, FreeRTOS tasks, inference stub
+- Fault injection mirroring real ESP32/STM32 failures
 
-### Dashboard (`dashboard/`)
-- Lobby: configure teams/drones, launch session
-- 2D canvas arena: hexagonal drones, team colors, glow effects, health bars, projectiles, hazard overlays, control point capture arcs
-- HUD panels: scoreboard, drone inspector (HP/shield/battery/latency/inference), kill feed, NLP terminal, HIL fleet health
-- Benchmark explorer: latency charts, accuracy vs quantization, energy cost
-- Click-to-select any drone for detailed telemetry
+### Backend — `backend/`
+- WebSocket broadcast at 60 FPS; session create / pause / delete
+- REST: spawn drones, issue commands, telemetry, benchmarks, replay, analytics
+- `/hil/inject` merges real hardware data into the simulation
+- Redis pub/sub for multi-server fan-out; TimescaleDB telemetry persistence
 
----
+### Dashboard — `dashboard/`
+- Lobby to configure teams and launch sessions
+- 2D canvas arena and a three.js 3D view
+- HUD: scoreboard, drone inspector, kill feed, NLP terminal, HIL fleet health
+- Analytics and benchmark pages (latency, accuracy vs quantization, energy)
 
-## NLP Command Examples
+## NLP command examples
 
 ```
 "Red team, attack the center in wedge formation"
@@ -126,37 +152,20 @@ cd dashboard && npm install && npm run dev
 "Flank the blue team from the east"
 "All units, regroup at alpha point"
 "Scatter and capture all control points"
-"Surround the enemy — prioritize nexus"
-"Kamikaze run on the gold team"
 ```
 
----
+## Edge AI benchmark (simulated, ESP32)
 
-## Edge AI Benchmark Results (simulated)
-
-| Quantization | Latency P50 (ESP32) | Accuracy | Energy/inference | Budget Met |
-|-------------|---------------------|----------|-----------------|------------|
+| Quantization | Latency p50 | Accuracy | Energy / inference | Budget met |
+|---|---|---|---|---|
 | 32-bit | 85 ms | 87.0% | 20.4 µJ | 0% |
 | 16-bit | 47 ms | 86.5% | 11.3 µJ | 36% |
 | **8-bit** | **24 ms** | **85.0%** | **5.8 µJ** | **78%** |
 | 4-bit | 14 ms | 81.0% | 3.4 µJ | 98% |
 
-8-bit is the sweet spot: 3.5x speedup, only 2% accuracy drop, fits in 520KB ESP32 RAM.
-
----
-
-## Resume-Ready Metrics
-
-- 128 autonomous drones at 60 FPS in Python
-- 4 quantization levels benchmarked across 5 MCU profiles
-- Edge inference decisions under 30ms at 8-bit on ESP32
-- Real ESP32 HIL integration via MQTT + FreeRTOS
-- NLP intent parsing -> formation assignment -> multi-agent execution
-- TimescaleDB hypertable ingesting 2000+ telemetry rows/sec
-- Kubernetes deployment with HPA (2–10 API replicas)
-
----
+8-bit is the sweet spot: 3.5× faster than 32-bit for a 2-point accuracy drop.
+These figures come from the simulator's model, not measurements on hardware.
 
 ## License
 
-MIT
+[MIT](LICENSE)
